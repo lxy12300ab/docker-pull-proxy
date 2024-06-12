@@ -3,6 +3,13 @@ name: Docker
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      name:
+        description: '同步镜像'
+        required: true
+        default: '同步镜像'
+
   # pull_request:
   #   branches: [ main ]
 
