@@ -2,7 +2,7 @@ name: Docker
 
 on:
   push:
-    branches: [ 1.9.3 ]  # 推送到1.9.3分支自动触发
+    branches: [ v1.9.3 ]  # 推送到1.9.3分支自动触发
   workflow_dispatch:
     inputs:
       branch:
