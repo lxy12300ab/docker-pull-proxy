@@ -2,16 +2,21 @@ name: Docker
 
 on:
   push:
-    branches: [ 1.9.3 ]
+    branches: [ 1.9.3 ]  # 推送到1.9.3分支自动触发
   workflow_dispatch:
     inputs:
+      branch:
+        description: '选择要同步镜像的分支'
+        required: true
+        default: '1.9.3'
+        type: choice
+        options:
+          - 1.9.3
+          - main  # 可选，根据需要增减
       name:
         description: '同步镜像'
         required: true
         default: '同步镜像'
-
-  # pull_request:
-  #   branches: [ main ]
 
 env:
   REGISTRY: registry.cn-hangzhou.aliyuncs.com
@@ -20,27 +25,42 @@ env:
   MM_NOTIFY_URL: "${{ secrets.MM_NOTIFY_URL }}"
 
 jobs:
-
   build:
     name: Pull
     runs-on: ubuntu-latest
     steps:
-    - name: Setup Docker buildx
-      uses: docker/setup-buildx-action@79abd3f86f79a9d68a23c75a09a9a85889262adf
+      - name: Setup Docker buildx
+        uses: docker/setup-buildx-action@v3
 
-    - name: Check out code
-      uses: actions/checkout@v2
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          # 手动触发时用选择的分支，自动触发时用触发分支
+          ref: ${{ github.event.inputs.branch || github.ref_name }}
+          fetch-depth: 0
 
-    - name: Build and push image to ACR EE
-      run: |
-        docker login -u $ALIYUN_REGISTRY_USER -p $ALIYUN_REGISTRY_PASSWORD $REGISTRY
-        sh pull.sh
-        data=`cat trigger.txt`
+      - name: Build and push image to ACR EE
+        run: |
+          # 登录阿里云镜像仓库
+          if ! docker login -u $ALIYUN_REGISTRY_USER -p $ALIYUN_REGISTRY_PASSWORD $REGISTRY; then
+            echo "Docker登录失败"
+            exit 1
+          fi
+          
+          # 执行拉取脚本
+          if ! sh pull.sh; then
+            echo "pull.sh执行失败"
+            exit 1
+          fi
+          
+          # 读取trigger.txt
+          data=$(cat trigger.txt 2>/dev/null || echo "trigger.txt不存在")
 
-        if [ $MM_NOTIFY_URL ];then
-          curl  -H 'Content-Type: application/json' \
-            -d "{\"msgtype\": \"text\",\"text\": {\"content\":\"同步成功 $data \"}}" \
-            $MM_NOTIFY_URL
-        else
-          echo 'MM_NOTIFY_URL not set'
-        fi
+          # 企业微信通知
+          if [ -n "$MM_NOTIFY_URL" ]; then
+            curl -s -H 'Content-Type: application/json' \
+              -d "{\"msgtype\": \"text\",\"text\": {\"content\":\"分支 [${{ github.event.inputs.branch || github.ref_name }}] 同步成功 $data \"}}" \
+              $MM_NOTIFY_URL
+          else
+            echo 'MM_NOTIFY_URL未配置，跳过通知'
+          fi
